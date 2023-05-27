@@ -1,0 +1,13 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Arsa Core
+Comment=Arsa P2P Cryptocurrency
+Comment[de]=Verbinde mit dem Arsa peer-to-peer Netzwerk
+Comment[fr]=Arsa, monnaie virtuelle cryptographique pair à pair
+Comment[tr]=Arsa, eşten eşe kriptografik sanal para birimi
+Exec=arsa-qt %u
+Terminal=false
+Type=Application
+Icon=arsa128
+MimeType=x-scheme-handler/arsa;
+Categories=Office;Finance;

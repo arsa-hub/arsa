@@ -1,0 +1,22 @@
+[Unit]
+Description=Arsa's distributed currency daemon
+After=network.target
+
+[Service]
+User=arsacore
+Group=arsacore
+
+Type=forking
+PIDFile=/var/lib/arsad/arsad.pid
+ExecStart=/usr/bin/arsad -daemon -pid=/var/lib/arsad/arsad.pid \
+-conf=/etc/arsacore/arsa.conf -datadir=/var/lib/arsad -disablewallet
+
+Restart=always
+PrivateTmp=true
+TimeoutStopSec=60s
+TimeoutStartSec=2s
+StartLimitInterval=120s
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

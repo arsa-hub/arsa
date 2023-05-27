@@ -1,0 +1,6 @@
+usr/local/bin/arsa-qt usr/bin
+share/pixmaps/arsa32.xpm usr/share/pixmaps
+share/pixmaps/arsa16.xpm usr/share/pixmaps
+share/pixmaps/arsa128.png usr/share/pixmaps
+debian/arsa-qt.desktop usr/share/applications
+debian/arsa-qt.protocol usr/share/kde4/services/
