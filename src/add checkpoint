@@ -597,7 +597,7 @@ public:
             {264580, 1900000 * COIN},
             {INT_MAX, 2100000 * COIN}
           },
-          { {23040, 0}, {INT_MAX, 70} }
+          { {4320, 0}, {INT_MAX, 70} }
         );
         //FutureRewardShare defaultShare(0.8,0.2,0.0);
         consensus.nFutureRewardShare = Consensus::FutureRewardShare(0.8,0.2,0.0);
@@ -632,7 +632,8 @@ public:
         fBIP9CheckSmartnodesUpgraded = true;
 
         checkpointData = {
-          {  
+          {  {2720, uint256S("0xa5366926d2fc4a9a216b2bb13e4d968363fdaf286f9933f82586ca4717c2cd0e")},
+             {3600, uint256S("0xd7533ddcc6e9cd1c4643cf64fec3839f8d537b50c22f2718416e69d5c3a6ad79")}
 
           }
         };
