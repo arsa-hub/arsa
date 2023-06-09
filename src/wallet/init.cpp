@@ -52,7 +52,7 @@ public:
     //! Close all wallets.
     void Close() const override;
 
-    // Dash Specific Wallet Init
+    // Arsa Specific Wallet Init
     void AutoLockSmartnodeCollaterals() const override;
     void InitCoinJoinSettings() const override;
     void InitKeePass() const override;

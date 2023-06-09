@@ -543,10 +543,11 @@ void static ArsaMiner(const CChainParams& chainparams)
 
     #ifdef ENABLE_WALLET
         pWallet = GetFirstWallet();
+
+        if (!EnsureWalletIsAvailable(pWallet, false)) {
+            LogPrintf("ArsaMiner -- Wallet not available\n");
+        }
     #endif
-    if (!EnsureWalletIsAvailable(pWallet, false)) {
-        LogPrintf("ArsaMiner -- Wallet not available\n");
-    }
 
     if (pWallet == NULL)
     {
