@@ -48,8 +48,6 @@ public:
     // sha256(proTxHash, confirmedHash) to speed up quorum calculations
     // please note that this is NOT a double-sha256 hash
     uint256 confirmedHashWithProRegTxHash;
-    //collateral amount used in quorum calculations
-    CAmount nCollateralAmount;
 
     CKeyID keyIDOwner;
     CBLSLazyPublicKey pubKeyOperator;
@@ -93,7 +91,6 @@ public:
         READWRITE(addr);
         READWRITE(scriptPayout);
         READWRITE(scriptOperatorPayout);
-        READWRITE(nCollateralAmount);
     }
 
     void ResetOperatorFields()
@@ -157,7 +154,6 @@ public:
         Field_addr                              = 0x0800,
         Field_scriptPayout                      = 0x1000,
         Field_scriptOperatorPayout              = 0x2000,
-        Field_nCollateralAmount                 = 0x4000,
     };
 
 #define DMN_STATE_DIFF_ALL_FIELDS \
@@ -174,8 +170,7 @@ public:
     DMN_STATE_DIFF_LINE(keyIDVoting) \
     DMN_STATE_DIFF_LINE(addr) \
     DMN_STATE_DIFF_LINE(scriptPayout) \
-    DMN_STATE_DIFF_LINE(scriptOperatorPayout) \
-    DMN_STATE_DIFF_LINE(nCollateralAmount)
+    DMN_STATE_DIFF_LINE(scriptOperatorPayout)
 
 public:
     uint32_t fields{0};

@@ -1375,7 +1375,12 @@ UniValue protx_list(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid height specified");
         }
 
-        cout << "protx_list: height" << height << ", chainActive.Height(): " << chainActive.Height() << endl;
+        cout << "protx_list: height" << height << ", chainActive.Height(): " << chainActive.Height() << ", fSpentIndex: " << fSpentIndex << endl;
+
+        if (height != chainActive.Height() && !fSpentIndex)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "specifying height requires spentindex enabled");
+        }
 
         CDeterministicMNList mnList = deterministicMNManager->GetListForBlock(chainActive[height]);
         bool onlyValid = type == "valid";

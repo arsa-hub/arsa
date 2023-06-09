@@ -3381,7 +3381,7 @@ bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nC
     // Copy output sizes from new transaction; they may have had the fee
     // subtracted from them.
     for (unsigned int idx = 0; idx < tx.vout.size(); idx++) {
-        tx.vout[idx] = tx_new->vout[idx];
+        tx.vout[idx].nValue = tx_new->vout[idx].nValue;
     }
 
     // Add new txins while keeping original txin scriptSig/order.
@@ -4508,14 +4508,11 @@ void CWallet::ReserveKeyFromKeyPool(int64_t& nIndex, CKeyPool& keypool, bool fIn
 void CWallet::KeepKey(int64_t nIndex)
 {
     // Remove from key pool
-    {
-        LOCK(cs_wallet);
-        WalletBatch batch(*database);
-        if (batch.ErasePool(nIndex))
-            --nKeysLeftSinceAutoBackup;
-        if (!nWalletBackups)
-            nKeysLeftSinceAutoBackup = 0;
-    }
+    WalletBatch batch(*database);
+    if (batch.ErasePool(nIndex))
+        --nKeysLeftSinceAutoBackup;
+    if (!nWalletBackups)
+        nKeysLeftSinceAutoBackup = 0;
     LogPrintf("keypool keep %d\n", nIndex);
 }
 

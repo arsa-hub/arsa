@@ -1,4 +1,4 @@
-Arsa Core Latest v2.1.4.22
+Arsa Core Latest v1.0.2.11
 ===========================
 
 |CI|master|develop|

@@ -60,10 +60,7 @@ void CQuorum::Init(const CFinalCommitment& _qc, const CBlockIndex* _pindexQuorum
 
 bool CQuorum::SetVerificationVector(const BLSVerificationVector& quorumVecIn)
 {
-    const auto quorumVecInSerialized = ::SerializeHash(quorumVecIn);
-
-    LOCK(cs);
-    if (quorumVecInSerialized != qc.quorumVvecHash) {
+    if (::SerializeHash(quorumVecIn) != qc.quorumVvecHash) {
         return false;
     }
     quorumVvec = std::make_shared<BLSVerificationVector>(quorumVecIn);
@@ -72,10 +69,9 @@ bool CQuorum::SetVerificationVector(const BLSVerificationVector& quorumVecIn)
 
 bool CQuorum::SetSecretKeyShare(const CBLSSecretKey& secretKeyShare)
 {
-    if (!secretKeyShare.IsValid() || (secretKeyShare.GetPublicKey() != GetPubKeyShare(WITH_LOCK(activeSmartnodeInfoCs, return GetMemberIndex(activeSmartnodeInfo.proTxHash))))) {
+    if (!secretKeyShare.IsValid() || (secretKeyShare.GetPublicKey() != GetPubKeyShare(GetMemberIndex(activeSmartnodeInfo.proTxHash)))) {
         return false;
     }
-    LOCK(cs);
     skShare = secretKeyShare;
     return true;
 }
@@ -102,22 +98,15 @@ bool CQuorum::IsValidMember(const uint256& proTxHash) const
 
 CBLSPublicKey CQuorum::GetPubKeyShare(size_t memberIdx) const
 {
-    LOCK(cs);
-    if (!HasVerificationVector() || memberIdx >= members.size() || !qc.validMembers[memberIdx]) {
+    if (quorumVvec == nullptr || memberIdx >= members.size() || !qc.validMembers[memberIdx]) {
         return CBLSPublicKey();
     }
     auto& m = members[memberIdx];
     return blsCache.BuildPubKeyShare(m->proTxHash, quorumVvec, CBLSId(m->proTxHash));
 }
 
-bool CQuorum::HasVerificationVector() const {
-    LOCK(cs);
-    return quorumVvec != nullptr;
-}
-
-CBLSSecretKey CQuorum::GetSkShare() const
+const CBLSSecretKey& CQuorum::GetSkShare() const
 {
-    LOCK(cs);
     return skShare;
 }
 
@@ -135,8 +124,7 @@ void CQuorum::WriteContributions(CEvoDB& evoDb)
 {
     uint256 dbKey = MakeQuorumKey(*this);
 
-    LOCK(cs);
-    if (HasVerificationVector()) {
+    if (quorumVvec != nullptr) {
         evoDb.GetRawDB().Write(std::make_pair(DB_QUORUM_QUORUM_VVEC, dbKey), *quorumVvec);
     }
     if (skShare.IsValid()) {
@@ -150,14 +138,14 @@ bool CQuorum::ReadContributions(CEvoDB& evoDb)
 
     BLSVerificationVector qv;
     if (evoDb.Read(std::make_pair(DB_QUORUM_QUORUM_VVEC, dbKey), qv)) {
-        WITH_LOCK(cs, quorumVvec = std::make_shared<BLSVerificationVector>(std::move(qv)));
+        quorumVvec = std::make_shared<BLSVerificationVector>(std::move(qv));
     } else {
         return false;
     }
 
     // We ignore the return value here as it is ok if this fails. If it fails, it usually means that we are not a
     // member of the quorum but observed the whole DKG process to have the quorum verification vector.
-    WITH_LOCK(cs, evoDb.Read(std::make_pair(DB_QUORUM_SK_SHARE, dbKey), skShare));
+    evoDb.Read(std::make_pair(DB_QUORUM_SK_SHARE, dbKey), skShare);
 
     return true;
 }
@@ -208,10 +196,8 @@ void CQuorumManager::TriggerQuorumDataRecoveryThreads(const CBlockIndex* pIndex)
 
         // First check if we are member of any quorum of this type
         bool fWeAreQuorumTypeMember{false};
-
-        auto proTxHash = WITH_LOCK(activeSmartnodeInfoCs, return activeSmartnodeInfo.proTxHash);
         for (const auto& pQuorum : vecQuorums) {
-            if (pQuorum->IsValidMember(proTxHash)) {
+            if (pQuorum->IsValidMember(activeSmartnodeInfo.proTxHash)) {
                 fWeAreQuorumTypeMember = true;
                 break;
             }
@@ -224,16 +210,16 @@ void CQuorumManager::TriggerQuorumDataRecoveryThreads(const CBlockIndex* pIndex)
             }
 
             uint16_t nDataMask{0};
-            const bool fWeAreQuorumMember = pQuorum->IsValidMember(proTxHash);
+            const bool fWeAreQuorumMember = pQuorum->IsValidMember(activeSmartnodeInfo.proTxHash);
             const bool fSyncForTypeEnabled = mapQuorumVvecSync.count(pQuorum->qc.llmqType) > 0;
             const QvvecSyncMode syncMode = fSyncForTypeEnabled ? mapQuorumVvecSync.at(pQuorum->qc.llmqType) : QvvecSyncMode::Invalid;
             const bool fSyncCurrent = syncMode == QvvecSyncMode::Always || (syncMode == QvvecSyncMode::OnlyIfTypeMember && fWeAreQuorumTypeMember);
 
-            if ((fWeAreQuorumMember || (fSyncForTypeEnabled && fSyncCurrent)) && !pQuorum->HasVerificationVector()) {
+            if ((fWeAreQuorumMember || (fSyncForTypeEnabled && fSyncCurrent)) && pQuorum->quorumVvec == nullptr) {
                 nDataMask |= llmq::CQuorumDataRequest::QUORUM_VERIFICATION_VECTOR;
             }
 
-            if (fWeAreQuorumMember && !pQuorum->GetSkShare().IsValid()) {
+            if (fWeAreQuorumMember && !pQuorum->skShare.IsValid()) {
                 nDataMask |= llmq::CQuorumDataRequest::ENCRYPTED_CONTRIBUTIONS;
             }
 
@@ -279,6 +265,7 @@ void CQuorumManager::EnsureQuorumConnections(Consensus::LLMQType llmqType, const
 {
     const auto& params = Params().GetConsensus().llmqs.at(llmqType);
 
+    auto myProTxHash = activeSmartnodeInfo.proTxHash;
     auto lastQuorums = ScanQuorums(llmqType, pindexNew, (size_t)params.keepOldConnections);
 
     auto connmanQuorumsToDelete = g_connman->GetSmartnodeQuorums(llmqType);
@@ -288,8 +275,9 @@ void CQuorumManager::EnsureQuorumConnections(Consensus::LLMQType llmqType, const
     auto curDkgBlock = pindexNew->GetAncestor(curDkgHeight)->GetBlockHash();
     connmanQuorumsToDelete.erase(curDkgBlock);
 
-    for (const auto& quorum : lastQuorums) {
-        if (CLLMQUtils::EnsureQuorumConnections(llmqType, quorum->pindexQuorum, WITH_LOCK(activeSmartnodeInfoCs, return activeSmartnodeInfo.proTxHash))) {
+    bool allowWatch = gArgs.GetBoolArg("-watchquorums", DEFAULT_WATCH_QUORUMS);
+    for (auto& quorum : lastQuorums) {
+        if (CLLMQUtils::EnsureQuorumConnections(llmqType, quorum->pindexQuorum, myProTxHash)) {
             continue;
         }
         if (connmanQuorumsToDelete.count(quorum->qc.quorumHash) > 0) {
@@ -351,9 +339,8 @@ bool CQuorumManager::BuildQuorumContributions(const CFinalCommitment& fqc, std::
     }
 
     cxxtimer::Timer t2(true);
-    LOCK(quorum->cs);
     quorum->quorumVvec = blsWorker.BuildQuorumVerificationVector(vvecs);
-    if (!quorum->HasVerificationVector()) {
+    if (quorum->quorumVvec == nullptr) {
         LogPrint(BCLog::LLMQ, "CQuorumManager::%s -- failed to build quorumVvec\n", __func__);
         // without the quorum vvec, there can't be a skShare, so we fail here. Failure is not fatal here, as it still
         // allows to use the quorum as a non-member (verification through the quorum pub key)
@@ -388,7 +375,7 @@ bool CQuorumManager::RequestQuorumData(CNode* pFrom, Consensus::LLMQType llmqTyp
         LogPrint(BCLog::LLMQ, "CQuorumManager::%s -- Version must be %d or greater.\n", __func__, LLMQ_DATA_MESSAGES_VERSION);
         return false;
     }
-    if (pFrom == nullptr || (pFrom->GetVerifiedProRegTxHash().IsNull() && !pFrom->qwatch)) {
+    if (pFrom->verifiedProRegTxHash.IsNull() && !pFrom->qwatch) {
         LogPrint(BCLog::LLMQ, "CQuorumManager::%s -- pFrom is neither a verified smartnode nor a qwatch connection\n", __func__);
         return false;
     }
@@ -406,7 +393,7 @@ bool CQuorumManager::RequestQuorumData(CNode* pFrom, Consensus::LLMQType llmqTyp
     }
 
     LOCK(cs_data_requests);
-    auto key = std::make_pair(pFrom->GetVerifiedProRegTxHash(), true);
+    auto key = std::make_pair(pFrom->verifiedProRegTxHash, true);
     auto it = mapQuorumDataRequests.emplace(key, CQuorumDataRequest(llmqType, pQuorumIndex->GetBlockHash(), nDataMask, proTxHash));
     if (!it.second && !it.first->second.IsExpired()) {
         LogPrint(BCLog::LLMQ, "CQuorumManager::%s -- Already requested\n", __func__);
@@ -536,13 +523,10 @@ size_t CQuorumManager::GetQuorumRecoveryStartOffset(const CQuorumCPtr pQuorum, c
     });
     std::sort(vecProTxHashes.begin(), vecProTxHashes.end());
     size_t nIndex{0};
-    {
-        LOCK(activeSmartnodeInfoCs);
-        for (size_t i = 0; i < vecProTxHashes.size(); ++i) {
-            if (activeSmartnodeInfo.proTxHash == vecProTxHashes[i]) {
-                nIndex = i;
-                break;
-            }
+    for (size_t i = 0; i < vecProTxHashes.size(); ++i) {
+        if (activeSmartnodeInfo.proTxHash == vecProTxHashes[i]) {
+            nIndex = i;
+            break;
         }
     }
     return nIndex % pQuorum->qc.validMembers.size();
@@ -561,7 +545,7 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
     if (strCommand == NetMsgType::QGETDATA) {
 
-        if (!fSmartnodeMode || pFrom == nullptr || (pFrom->GetVerifiedProRegTxHash().IsNull() && !pFrom->qwatch)) {
+        if (!fSmartnodeMode || pFrom == nullptr || (pFrom->verifiedProRegTxHash.IsNull() && !pFrom->qwatch)) {
             errorHandler("Not a verified smartnode or a qwatch connection");
             return;
         }
@@ -578,7 +562,7 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
         {
             LOCK2(cs_main, cs_data_requests);
-            auto key = std::make_pair(pFrom->GetVerifiedProRegTxHash(), false);
+            auto key = std::make_pair(pFrom->verifiedProRegTxHash, false);
             auto it = mapQuorumDataRequests.find(key);
             if (it == mapQuorumDataRequests.end()) {
                 it = mapQuorumDataRequests.emplace(key, request).first;
@@ -614,12 +598,13 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
         // Check if request wants QUORUM_VERIFICATION_VECTOR data
         if (request.GetDataMask() & CQuorumDataRequest::QUORUM_VERIFICATION_VECTOR) {
-            if (!pQuorum->HasVerificationVector()) {
+
+            if (!pQuorum->quorumVvec) {
                 sendQDATA(CQuorumDataRequest::Errors::QUORUM_VERIFICATION_VECTOR_MISSING);
                 return;
             }
 
-            WITH_LOCK(pQuorum->cs, ssResponseData << *pQuorum->quorumVvec);
+            ssResponseData << *pQuorum->quorumVvec;
         }
 
         // Check if request wants ENCRYPTED_CONTRIBUTIONS data
@@ -646,9 +631,8 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
     if (strCommand == NetMsgType::QDATA) {
 
-        auto verifiedProRegTxHash = pFrom->GetVerifiedProRegTxHash();
-        if ((!fSmartnodeMode && !CLLMQUtils::IsWatchQuorumsEnabled()) || pFrom == nullptr || (verifiedProRegTxHash.IsNull() && !pFrom->qwatch)) {
-            errorHandler("Not a verified masternode or a qwatch connection");
+        if ((!fSmartnodeMode && !CLLMQUtils::IsWatchQuorumsEnabled()) || pFrom == nullptr || (pFrom->verifiedProRegTxHash.IsNull() && !pFrom->qwatch)) {
+            errorHandler("Not a verified smartnode or a qwatch connection");
             return;
         }
 
@@ -657,7 +641,7 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
         {
             LOCK2(cs_main, cs_data_requests);
-            auto it = mapQuorumDataRequests.find(std::make_pair(verifiedProRegTxHash, true));
+            auto it = mapQuorumDataRequests.find(std::make_pair(pFrom->verifiedProRegTxHash, true));
             if (it == mapQuorumDataRequests.end()) {
                 errorHandler("Not requested");
                 return;
@@ -704,37 +688,11 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
         // Check if request has ENCRYPTED_CONTRIBUTIONS data
         if (request.GetDataMask() & CQuorumDataRequest::ENCRYPTED_CONTRIBUTIONS) {
 
-
-            if (WITH_LOCK(pQuorum->cs, return pQuorum->quorumVvec->size() != pQuorum->params.threshold)) {
+            if (pQuorum->quorumVvec->size() != pQuorum->params.threshold) {
                 errorHandler("No valid quorum verification vector available", 0); // Don't bump score because we asked for it
                 return;
             }
 
-
-/*            BLSVerificationVectorPtr quorumVvecCopy;
-            int thresholdCopy;
-            {
-                LOCK(pQuorum->cs);
-                // work on copy (keep this simple)
-                quorumVvecCopy = pQuorum->quorumVvec;
-                // If the quorum vector ptr isn't here we know the issue is with pQuorum
-                thresholdCopy = pQuorum->params.threshold;
-                // Never say never :)
-            }
-
-            // This is 100% thread-safe so we can rule out threading issues
-            if (quorumVvecCopy) {
-                if (quorumVvecCopy->size() != thresholdCopy) {
-                    errorHandler("No valid quorum verification vector available", 0); // Don't bump score because we asked for it
-                    return;
-                }
-            }
-
-            if (pQuorum->qc.validMembers.size() != pQuorum->params.size) {
-                errorHandler("Quorum not fully qualified", 0); // Don't bump score because we asked for it
-                return;
-            }
-*/
             int memberIdx = pQuorum->GetMemberIndex(request.GetProTxHash());
             if (memberIdx == -1) {
                 errorHandler("Not a member of the quorum", 0); // Don't bump score because we asked for it
@@ -747,9 +705,8 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
             BLSSecretKeyVector vecSecretKeys;
             vecSecretKeys.resize(vecEncrypted.size());
             int minSmartnodeProtoVersion =  Params().IsFutureActive(chainActive.Tip()) ? MIN_SMARTNODE_PROTO_VERSION : OLD_MIN_SMARTNODE_PROTO_VERSION;
-            auto secret = WITH_LOCK(activeSmartnodeInfoCs, return *activeSmartnodeInfo.blsKeyOperator);
             for (size_t i = 0; i < vecEncrypted.size(); ++i) {
-                if (!vecEncrypted[i].Decrypt(memberIdx, secret, vecSecretKeys[i], minSmartnodeProtoVersion)) {
+                if (!vecEncrypted[i].Decrypt(memberIdx, *activeSmartnodeInfo.blsKeyOperator, vecSecretKeys[i], minSmartnodeProtoVersion)) {
                     errorHandler("Failed to decrypt");
                     return;
                 }
@@ -768,7 +725,7 @@ void CQuorumManager::ProcessMessage(CNode* pFrom, const std::string& strCommand,
 
 void CQuorumManager::StartCachePopulatorThread(const CQuorumCPtr pQuorum) const
 {
-    if (!pQuorum->HasVerificationVector()) {
+    if (pQuorum->quorumVvec == nullptr) {
         return;
     }
 
@@ -821,7 +778,7 @@ void CQuorumManager::StartQuorumDataRecoveryThread(const CQuorumCPtr pQuorum, co
 
         vecMemberHashes.reserve(pQuorum->qc.validMembers.size());
         for (auto& member : pQuorum->members) {
-            if (pQuorum->IsValidMember(member->proTxHash) && member->proTxHash != WITH_LOCK(activeSmartnodeInfoCs, return activeSmartnodeInfo.proTxHash)) {
+            if (pQuorum->IsValidMember(member->proTxHash) && member->proTxHash != activeSmartnodeInfo.proTxHash) {
                 vecMemberHashes.push_back(member->proTxHash);
             }
         }
@@ -831,13 +788,12 @@ void CQuorumManager::StartQuorumDataRecoveryThread(const CQuorumCPtr pQuorum, co
 
         while (nDataMask > 0 && !quorumThreadInterrupt) {
 
-            if (nDataMask & llmq::CQuorumDataRequest::QUORUM_VERIFICATION_VECTOR &&
-                pQuorum->HasVerificationVector()) {
+            if (nDataMask & llmq::CQuorumDataRequest::QUORUM_VERIFICATION_VECTOR && pQuorum->quorumVvec != nullptr) {
                 nDataMask &= ~llmq::CQuorumDataRequest::QUORUM_VERIFICATION_VECTOR;
                 printLog("Received quorumVvec");
             }
 
-            if (nDataMask & llmq::CQuorumDataRequest::ENCRYPTED_CONTRIBUTIONS && pQuorum->GetSkShare().IsValid()) {
+            if (nDataMask & llmq::CQuorumDataRequest::ENCRYPTED_CONTRIBUTIONS && pQuorum->skShare.IsValid()) {
                 nDataMask &= ~llmq::CQuorumDataRequest::ENCRYPTED_CONTRIBUTIONS;
                 printLog("Received skShare");
             }
@@ -869,19 +825,18 @@ void CQuorumManager::StartQuorumDataRecoveryThread(const CQuorumCPtr pQuorum, co
                 printLog("Connect");
             }
 
-            auto proTxHash = WITH_LOCK(activeSmartnodeInfoCs, return activeSmartnodeInfo.proTxHash);
             g_connman->ForEachNode([&](CNode* pNode) {
-                auto verifiedProRegTxHash = pNode->GetVerifiedProRegTxHash();
-                if (pCurrentMemberHash == nullptr || verifiedProRegTxHash != *pCurrentMemberHash) {
+
+                if (pCurrentMemberHash == nullptr || pNode->verifiedProRegTxHash != *pCurrentMemberHash) {
                     return;
                 }
 
-                if (quorumManager->RequestQuorumData(pNode, pQuorum->qc.llmqType, pQuorum->pindexQuorum, nDataMask, proTxHash)) {
+                if (quorumManager->RequestQuorumData(pNode, pQuorum->qc.llmqType, pQuorum->pindexQuorum, nDataMask, activeSmartnodeInfo.proTxHash)) {
                     nTimeLastSuccess = GetAdjustedTime();
                     printLog("Requested");
                 } else {
                     LOCK(cs_data_requests);
-                    auto it = mapQuorumDataRequests.find(std::make_pair(verifiedProRegTxHash, true));
+                    auto it = mapQuorumDataRequests.find(std::make_pair(pNode->verifiedProRegTxHash, true));
                     if (it == mapQuorumDataRequests.end()) {
                         printLog("Failed");
                         pNode->fDisconnect = true;

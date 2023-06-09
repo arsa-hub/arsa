@@ -16,7 +16,6 @@
 #include <core_io.h>
 #include <keystore.h>
 #include <policy/policy.h>
-#include <chainparams.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -221,9 +220,6 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, TestChain100Setup)
         // successes.
         ValidateCheckInputsForAllFlags(spend_tx, SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC, false);
     }
-
-    //turn off BIP66 (DERSIG is enabled by default)
-    UpdateBIP66Parameters(false);
 
     // And if we produce a block with this tx, it should be valid (DERSIG not
     // enabled yet), even though there's no cache entry.

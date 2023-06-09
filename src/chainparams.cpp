@@ -113,13 +113,6 @@ void CChainParams::UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64
 //    consensus.DIP0003EnforcementHeight = nEnforcementHeight;
 //}
 
-void CChainParams::UpdateBIP66Parameters(bool active)
-{
-    if (strcmp(Params().NetworkIDString().c_str(),"regtest") == 0){
-        consensus.BIP66Enabled = active;
-    }
-}
-
 void CChainParams::UpdateBudgetParameters(int nSmartnodePaymentsStartBlock, int nBudgetPaymentsStartBlock, int nSuperblockStartBlock)
 {
     consensus.nSmartnodePaymentsStartBlock = nSmartnodePaymentsStartBlock;
@@ -166,37 +159,34 @@ static CBlock FindDevNetGenesisBlock(const CBlock &prevBlock, const CAmount& rew
     assert(false);
 }
 
-/// Verify the POW hash is valid for the genesis block
-/// If starting Nonce is not valid, search for one
-static void VerifyGenesisPOW(const CBlock& genesis)
+static void FindMainNetGenesisBlock(uint32_t nTime, uint32_t nBits, const char* network)
 {
+    CBlock block = CreateGenesisBlock(nTime, 0, nBits, 4, 5000 * COIN);
+
     arith_uint256 bnTarget;
-    bnTarget.SetCompact(genesis.nBits);
+    bnTarget.SetCompact(block.nBits);
 
-    CBlock block(genesis);
-    do
-    {
+    for (uint32_t nNonce = 0; nNonce < UINT32_MAX; nNonce++) {
+        block.nNonce = nNonce;
+
         uint256 hash = block.GetPOWHash();
-        if (UintToArith256(hash) <= bnTarget)
-        {
-            if (genesis.nNonce != block.nNonce)
-            {
-                std::cerr << "VerifyGenesisPOW:  provided nNonce (" << genesis.nNonce << ") invalid" << std::endl;
-                std::cerr << "   nonce: " << block.nNonce << ", pow hash: 0x" << hash.ToString()
-                          << ", block hash: 0x" << block.GetHash().ToString() << std::endl;
-                assert(genesis.nNonce == block.nNonce);
-            }
-            else
-            {
-                return;
-            }
+        if (nNonce % 48 == 0) {
+        	printf("\nrnonce=%d, pow is %s\n", nNonce, hash.GetHex().c_str());
         }
-        ++block.nNonce;
-    }
-    while (block.nNonce != 0);
+        if (UintToArith256(hash) <= bnTarget) {
+        	printf("\n%s net\n", network);
+        	printf("\ngenesis is %s\n", block.ToString().c_str());
+        	printf("\npow is %s\n", hash.GetHex().c_str());
+        	printf("\ngenesisNonce is %d\n", nNonce);
+        	std::cout << "Genesis Merkle " << block.hashMerkleRoot.GetHex() << std::endl;
+        	return;
+        }
 
-    // We should never get here
-    error("VerifyGenesisPOW: could not find valid Nonce for genesis block");
+    }
+
+    // This is very unlikely to happen as we start the devnet with a very low difficulty. In many cases even the first
+    // iteration of the above loop will give a result already
+    error("%sNetGenesisBlock: could not find %s genesis block",network, network);
     assert(false);
 }
 
@@ -578,6 +568,8 @@ public:
         vSeeds.emplace_back("node03.arsagility.org");
         vSeeds.emplace_back("node04.arsagility.org");
 
+
+
         // Arsa addresses start with 'A'
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,23);
         // Arsa script addresses start with '7'
@@ -595,8 +587,8 @@ public:
 //        	std::cout << "mainnet is disable" << endl;
 //        	exit(0);
 //        }
-        std::vector<FounderRewardStructure> rewardStructures = {  {INT_MAX, 5} };// 5% founder/dev fee forever
-        consensus.nFounderPayment = FounderPayment(rewardStructures, 250);
+        std::vector<FounderRewardStructure> rewardStructures = {  {INT_MAX, 10} };// founder/dev fee 
+        consensus.nFounderPayment = FounderPayment(rewardStructures, 500);
         consensus.nCollaterals = SmartnodeCollaterals(
           { {88580, 900000 * COIN},
             {132580, 1100000 * COIN},
@@ -605,7 +597,7 @@ public:
             {264580, 1900000 * COIN},
             {INT_MAX, 2100000 * COIN}
           },
-          { {8200}, {INT_MAX, 70} }
+          { {8700, 0}, {INT_MAX, 70} }
         );
         //FutureRewardShare defaultShare(0.8,0.2,0.0);
         consensus.nFutureRewardShare = Consensus::FutureRewardShare(0.8,0.2,0.0);
@@ -1078,7 +1070,6 @@ public:
     }
 };
 
-
 static std::unique_ptr<CChainParams> globalChainParams;
 
 const CChainParams &Params() {
@@ -1114,11 +1105,6 @@ void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime,
 //{
 //    globalChainParams->UpdateDIP3Parameters(nActivationHeight, nEnforcementHeight);
 //}
-
-void UpdateBIP66Parameters(bool active)
-{
-    globalChainParams->UpdateBIP66Parameters(active);
-}
 
 void UpdateBudgetParameters(int nSmartnodePaymentsStartBlock, int nBudgetPaymentsStartBlock, int nSuperblockStartBlock)
 {
@@ -1170,7 +1156,7 @@ void CChainParams::UpdateLLMQParams(size_t totalMnCount, int height, bool lowLLM
         lastCheckMnCount = totalMnCount;
 		lastCheckedLowLLMQParams = lowLLMQParams;
 		lastCheckHeight = height;
-        bool isTestNet = strcmp(Params().NetworkIDString().c_str(),"test") == 0;
+        bool isTestNet = strcmp(Params().NetworkIDString().c_str(),"testnet") == 0;
 		if(totalMnCount < 5) {
 			consensus.llmqs[Consensus::LLMQ_50_60] = llmq3_60;
 			if(isTestNet) {
@@ -1184,7 +1170,7 @@ void CChainParams::UpdateLLMQParams(size_t totalMnCount, int height, bool lowLLM
 			consensus.llmqs[Consensus::LLMQ_50_60] = llmq10_60;
 			consensus.llmqs[Consensus::LLMQ_400_60] = llmq20_60;
 			consensus.llmqs[Consensus::LLMQ_400_85] = llmq20_85;
-		}  else if((totalMnCount < 4000 && isTestNet) || (totalMnCount < 600 && !isTestNet)) {
+		}  else if(totalMnCount < 600) {
 			consensus.llmqs[Consensus::LLMQ_50_60] = llmq50_60;
 			consensus.llmqs[Consensus::LLMQ_400_60] = llmq40_60;
 			consensus.llmqs[Consensus::LLMQ_400_85] = llmq40_85;
