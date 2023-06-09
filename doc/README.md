@@ -1,7 +1,7 @@
 Arsa Core
 ==========
 
-This is the official reference wallet for Arsa digital currency and comprises the backbone of the Arsa peer-to-peer network. You can [download Arsa Core](https://www.arsa.org/downloads/) or [build it yourself](#building) using the guides below.
+This is the official reference wallet for Arsa digital currency and comprises the backbone of the Arsa peer-to-peer network. You can [download Arsa Core](https://www.arsagility.org/downloads/) or [build it yourself](#building) using the guides below.
 
 Running
 ---------------------
@@ -24,12 +24,12 @@ Drag Arsa-Qt to your applications folder, and then run Arsa-Qt.
 
 ### Need Help?
 
-* See the [Arsa documentation](https://docs.arsa.org)
+* See the [Arsa documentation](https://docs.arsagility.org)
 for help and more information.
 * See the [Arsa Developer Documentation](https://arsa-docs.github.io/) 
 for technical specifications and implementation details.
 * Ask for help on [Arsa Nation Discord](http://arsachat.org)
-* Ask for help on the [Arsa Forum](https://arsa.org/forum)
+* Ask for help on the [Arsa Forum](https://arsagility.org/forum)
 
 Building
 ---------------------
@@ -59,7 +59,7 @@ The Arsa Core repo's [root README](/README.md) contains relevant information on 
 - [Benchmarking](benchmarking.md)
 
 ### Resources
-* Discuss on the [Arsa Forum](https://arsa.org/forum), in the Development & Technical Discussion board.
+* Discuss on the [Arsa Forum](https://arsagility.org/forum), in the Development & Technical Discussion board.
 * Discuss on [Arsa Nation Discord](http://arsachat.org)
 
 ### Miscellaneous
